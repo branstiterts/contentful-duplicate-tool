@@ -32,7 +32,7 @@ inquirer
     },
     {
       name: 'exclude',
-      message: 'Enter the entry / entries ID you wish to exclude (use commas to separate multiple IDs): ',
+      message: 'Enter the entry / entries ID you wish to \x1b[4mexclude\x1b[0m (use commas to separate multiple IDs): ',
     },
     {
       type: 'list',
@@ -80,7 +80,7 @@ inquirer
           {
             type: 'list',
             name: 'masterConfirmation',
-            message: '***** YOU ARE ABOUT TO DUPLICATE CONTENT TO [MASTER] ENVIRONMENT. ARE YOU SURE YOU WANT TO CONTINUE? *****',
+            message: '\x1b[31mYOU ARE ABOUT TO DUPLICATE CONTENT TO [MASTER] ENVIRONMENT. ARE YOU SURE YOU WANT TO CONTINUE?',
             choices: ['NO! This was a mistake.', 'YES - I know what I am doing.'],
           },
         ])
