@@ -3,6 +3,8 @@ const ora = require('ora');
 const error = require('../utils/error');
 const duplicateEntry = require('../utils/duplicateEntry');
 const constants = require('../shared/constants');
+const { FIELD_NAME } = require('../shared/constants');
+const { warning } = require('contentful-cli/dist/utils/log');
 
 const spinner = ora();
 
@@ -64,13 +66,22 @@ const duplicateEntries = async (
 
   // if the target environment have enough needed content types, then duplicate entries
   if (unexistedContentTypes.length === 0) {
-    spinner.info(`Start duplcate entries : [${entries}]`);
+    spinner.info(`Start duplicate entries : [${entries}]`);
+
+    if (targetEnv && 'name' in targetEnv && targetEnv.name.includes('master') && publish) {
+      warning('For protection of the [MASTER] environment, publishing is not allowed. Content is still created but is saved as [Draft]. This will require you to manual publish your duplicated content.');
+    }
 
     entries.forEach((entryId) => {
       duplicateEntry(entryId, sourceEnv, publish, exclude, singleLevel, targetEnv,
         prefix, suffix, regex, replaceStr, targetContentTypes).then((entry) => {
-        const entryNameObj = entry.fields.name;
-        const firstKeyName = Object.keys(entry.fields.name)[0];
+        let entryNameObj;
+        for (const fieldName of FIELD_NAME) {
+          if (entry.fields[fieldName]) {
+            entryNameObj = entry.fields[fieldName];
+          }
+        }
+        const firstKeyName = 'en-US';
 
         spinner.info(`Duplicate entry ${entryId} successfully. New entry #${entry.sys.id} - ${entryNameObj[firstKeyName]}`);
       });
@@ -102,7 +113,13 @@ module.exports = async (args) => {
       error(err.message, true);
     });
 
-  let targetEnv = sourceEnv;
+  let targetEnv = targetEnvironment ? await client.getSpace(spaceId)
+    .then(space => space.getEnvironment(targetEnvironment))
+    .catch((err) => {
+      spinner.stop();
+      error(err.message, true);
+    }) : sourceEnv;
+
   if (args['target-space-id']) {
     const targetClient = contentful.createClient({
       accessToken: args['mToken-target'] ? args['mToken-target'] : accessToken,
