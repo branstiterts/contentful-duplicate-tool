@@ -97,7 +97,7 @@ module.exports = async (args) => {
   const accessToken = args.mToken;
   const entries = args.entries.split(',');
   const exclude = args.exclude.split(',');
-  const environment = args.environment || 'master';
+  const environment = args.environment || 'develop';
   const targetEnvironment = args['target-environment'] || environment;
 
   spinner.start();
