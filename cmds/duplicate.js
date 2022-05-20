@@ -1,10 +1,10 @@
 const contentful = require('contentful-management');
 const ora = require('ora');
+const { warning } = require('contentful-cli/dist/utils/log');
 const error = require('../utils/error');
 const duplicateEntry = require('../utils/duplicateEntry');
 const constants = require('../shared/constants');
 const { FIELD_NAME } = require('../shared/constants');
-const { warning } = require('contentful-cli/dist/utils/log');
 
 const spinner = ora();
 

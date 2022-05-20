@@ -1,9 +1,19 @@
 const { warning } = require('contentful-cli/dist/utils/log');
 const ora = require('ora');
+const { FIELD_NAME } = require('../shared/constants');
 const constants = require('../shared/constants');
 const error = require('./error');
 
 const duplicatedEntries = [];
+
+const getEntryName = (entry) => {
+  for (const key in entry.fields) {
+    if (FIELD_NAME.includes(key)) {
+      return entry.fields[key]['en-US'];
+    }
+  }
+  return null;
+};
 
 /**
  * Duplicate an entry recursively
@@ -23,132 +33,143 @@ const duplicatedEntries = [];
  */
 const duplicateEntry = async (
   entryId, environment, publish, exclude, isSingleLevel, targetEnvironment,
-  prefix, suffix, regex, replaceStr, targetContentTypes) => {
+  prefix, suffix, regex, replaceStr, targetContentTypes, parentEntryId) => {
   const spinner = ora().start();
 
-  if (!exclude.includes(entryId) && !duplicatedEntries.includes(entryId)) {
-    duplicatedEntries.push(entryId);
-    // get the entry by id
-    const entry = await environment.getEntry(entryId).catch(err => error(err.message, true));
+  if (!exclude.includes(entryId)) {
+    if (!duplicatedEntries.includes(entryId)) {
+      duplicatedEntries.push(entryId);
+      // get the entry by id
+      const entry = await environment.getEntry(entryId).catch(err => error(err.message, true));
 
-    // clone entry fields value
-    const newEntryFields = {
-      ...entry.fields,
-    };
+      // clone entry fields value
+      const newEntryFields = {
+        ...entry.fields,
+      };
 
-    /* eslint-disable no-await-in-loop */
-    for (const field of Object.keys(newEntryFields)) {
-      // apply the new name for the new entry (if needed)
-      if (constants.FIELD_NAME.includes(field)) {
-        for (const localeKey of Object.keys(newEntryFields[field])) {
-          let createdName = newEntryFields[field][localeKey];
+      /* eslint-disable no-await-in-loop */
+      for (const field of Object.keys(newEntryFields)) {
+        // apply the new name for the new entry (if needed)
+        if (FIELD_NAME.includes(field)) {
+          for (const localeKey of Object.keys(newEntryFields[field])) {
+            let createdName = newEntryFields[field][localeKey];
 
-          if (regex && replaceStr) {
-            createdName = createdName.replace(regex, replaceStr);
+            if (regex && replaceStr) {
+              createdName = createdName.replace(regex, replaceStr);
+            }
+
+            createdName = prefix + createdName + suffix;
+
+            newEntryFields[field][localeKey] = createdName;
           }
+        } else {
+          // iterates through other fields,
+          // if the field contains a link to another entry, then duplicate
+          const fieldContent = entry.fields[field];
 
-          createdName = prefix + createdName + suffix;
+          for (const fieldContentKey of Object.keys(fieldContent)) {
+            const fieldContentValue = fieldContent[fieldContentKey];
 
-          newEntryFields[field][localeKey] = createdName;
-        }
-      } else {
-        // iterates through other fields,
-        // if the field contains a link to another entry, then duplicate
-        const fieldContent = entry.fields[field];
+            if (!isSingleLevel && (Array.isArray(fieldContentValue) || (fieldContentValue instanceof Object && 'sys' in fieldContentValue))) {
+              if (Array.isArray(fieldContentValue)) {
+                for (const [, content] of fieldContentValue.entries()) {
+                  if (content.sys.type === constants.LINK_TYPE
+                    && content.sys.linkType === constants.ENTRY_TYPE
+                    && !exclude.includes(content.sys.id)) {
+                    spinner.info(`Duplicating sub entry #${content.sys.id}`);
 
-        for (const fieldContentKey of Object.keys(fieldContent)) {
-          const fieldContentValue = fieldContent[fieldContentKey];
+                    const duplicatedEntry = await duplicateEntry(
+                      content.sys.id, environment, publish, exclude, isSingleLevel, targetEnvironment,
+                      prefix, suffix, regex, replaceStr, targetContentTypes, entryId,
+                    );
 
-          if (!isSingleLevel && (Array.isArray(fieldContentValue) || (fieldContentValue instanceof Object && 'sys' in fieldContentValue))) {
-            if (Array.isArray(fieldContentValue)) {
-              for (const [contentIndex, content] of fieldContentValue.entries()) {
-                if (content.sys.type === constants.LINK_TYPE
-                  && content.sys.linkType === constants.ENTRY_TYPE
-                  && !exclude.includes(content.sys.id)) {
-                  spinner.info(`Duplicating sub entry #${content.sys.id}`);
+                    if (duplicatedEntry !== null) {
+                      content.sys.id = duplicatedEntry.sys.id;
+                    }
+                  }
+                }
+              } else if (fieldContentValue instanceof Object && 'sys' in fieldContentValue) {
+                if (fieldContentValue.sys.type === constants.LINK_TYPE
+                  && fieldContentValue.sys.linkType === constants.ENTRY_TYPE
+                  && !exclude.includes(fieldContentValue.sys.id)) {
+                  spinner.info(`Duplicating sub entry #${fieldContentValue.sys.id}`);
 
                   const duplicatedEntry = await duplicateEntry(
-                    content.sys.id, environment, publish, exclude, isSingleLevel, targetEnvironment,
-                    prefix, suffix, regex, replaceStr, targetContentTypes,
+                    fieldContentValue.sys.id, environment, publish, exclude, isSingleLevel,
+                    targetEnvironment, prefix, suffix, regex, replaceStr, targetContentTypes, entryId,
                   );
-                  if ('sys' in fieldContentValue && 'id' in fieldContentValue) {
-                    fieldContentValue[contentIndex].sys.id = duplicatedEntry.sys.id;
-                    duplicatedEntries.push(duplicateEntry.sys.id);
+
+                  if (duplicatedEntry !== null) {
+                    fieldContentValue.sys.id = duplicatedEntry.sys.id;
                   }
                 }
               }
-            } else if (fieldContentValue instanceof Object && 'sys' in fieldContentValue) {
-              if (fieldContentValue.sys.type === constants.LINK_TYPE
-                && fieldContentValue.sys.linkType === constants.ENTRY_TYPE
-                && !exclude.includes(fieldContentValue.sys.id)) {
-                spinner.info(`Duplicating sub entry #${fieldContentValue.sys.id}`);
+            }
 
-                const duplicatedEntry = await duplicateEntry(
-                  fieldContentValue.sys.id, environment, publish, exclude, isSingleLevel, targetEnvironment,
-                  prefix, suffix, regex, replaceStr, targetContentTypes,
-                );
-                if ('sys' in fieldContentValue && 'id' in fieldContentValue) {
-                  fieldContentValue.sys.id = duplicatedEntry.sys.id;
-                  duplicatedEntries.push(duplicateEntry.sys.id);
+            newEntryFields[field][fieldContentKey] = fieldContentValue;
+          }
+        }
+      }
+      /* eslint-enable no-await-in-loop */
+
+      // create new entry
+      const newEntry = targetEnvironment.createEntry(entry.sys.contentType.sys.id, {
+        fields: newEntryFields,
+      }).then((e) => {
+        spinner.stop();
+        return e;
+      }).catch((err) => {
+        spinner.stop();
+        error(err.message, true);
+      });
+
+      // check if the new entry need to publish or not
+      if (publish) {
+        if (targetEnvironment && 'name' in targetEnvironment && !targetEnvironment.name.includes('master')) {
+          if (entry.isPublished()) {
+            // if the entry's content type has a required asset field,
+            // then the entry will be draft.
+            const contentType = targetContentTypes.items.find(
+              item => item.sys.id === entry.sys.contentType.sys.id,
+            );
+
+            let canPublish = true;
+            for (const f of contentType.fields) {
+              if (f.linkType === constants.ASSET_TYPE && f.required) {
+                const entryFieldObject = entry.fields[f.id];
+
+                /* eslint-disable no-await-in-loop */
+                for (const entryFieldKey of Object.keys(entryFieldObject)) {
+                  const entryFieldValue = entryFieldObject[entryFieldKey];
+
+                  /* eslint-disable no-loop-func */
+                  await targetEnvironment.getAsset(entryFieldValue.sys.id).catch(() => {
+                    canPublish = false;
+                  });
+                  /* eslint-enable no-loop-func */
                 }
+                /* eslint-enable no-await-in-loop */
               }
             }
-          }
 
-          newEntryFields[field][fieldContentKey] = fieldContentValue;
-        }
-      }
-    }
-    /* eslint-enable no-await-in-loop */
-
-    // create new entry
-    const newEntry = targetEnvironment.createEntry(entry.sys.contentType.sys.id, {
-      fields: newEntryFields,
-    }).then((e) => {
-      spinner.stop();
-      return e;
-    }).catch((err) => {
-      spinner.stop();
-      error(err.message, true);
-    });
-
-    // check if the new entry need to publish or not
-    if (publish) {
-      if (targetEnvironment && 'name' in targetEnvironment && !targetEnvironment.name.includes('master')) {
-        if (entry.isPublished()) {
-          // if the entry's content type has a required asset field,
-          // then the entry will be draft.
-          const contentType = targetContentTypes.items.find(
-            item => item.sys.id === entry.sys.contentType.sys.id,
-          );
-
-          let canPublish = true;
-          for (const f of contentType.fields) {
-            if (f.linkType === constants.ASSET_TYPE && f.required) {
-              const entryFieldObject = entry.fields[f.id];
-
-              /* eslint-disable no-await-in-loop */
-              for (const entryFieldKey of Object.keys(entryFieldObject)) {
-                const entryFieldValue = entryFieldObject[entryFieldKey];
-
-                /* eslint-disable no-loop-func */
-                await targetEnvironment.getAsset(entryFieldValue.sys.id).catch(() => {
-                  canPublish = false;
-                });
-                /* eslint-enable no-loop-func */
-              }
-              /* eslint-enable no-await-in-loop */
+            if (canPublish) {
+              newEntry.then(e => e.publish()).catch(() => error('Unable to publish entry. This is likely due to some validation error on the content.', false));
             }
-          }
-
-          if (canPublish) {
-            newEntry.then(e => e.publish()).catch(() => error('Unable to publish entry. This is likely due to some validation error on the content.', false));
           }
         }
       }
-    }
 
-    return newEntry;
+      return newEntry;
+    // eslint-disable-next-line no-else-return
+    } else {
+      const parentEntry = await environment.getEntry(parentEntryId).catch(err => error(err.message, true));
+      const childEntry = await environment.getEntry(entryId).catch(err => error(err.message, true));
+
+      const parentName = getEntryName(parentEntry);
+      const childName = getEntryName(childEntry);
+
+      warning(`Content loop found between entry [${parentName} - ID #${parentEntry.sys.id}] and entry [${childName} - ID #${childEntry.sys.id}].`);
+    }
   }
 
   spinner.stop();

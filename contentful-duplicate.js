@@ -22,7 +22,14 @@ inquirer
     {
       name: 'mToken',
       message: '* Enter your Contentful \x1b[32mPersonal Access Token\x1b[0m: ',
-      default: '<DEFAULT TOKEN CAN BE ENTERED HERE>',
+      default: '<DEFAULT PERSONAL ACCESS TOKEN CAN BE ENTERED HERE>',
+      validate: confirmAnswerRequired,
+    },
+    {
+      type: 'list',
+      name: 'singleLevel',
+      message: '* Only duplicate \x1b[32msingle level\x1b[0m? (if set to true, only the first level entries will be duplicated): ',
+      choices: ['false', 'true'],
       validate: confirmAnswerRequired,
     },
     {
@@ -81,11 +88,11 @@ inquirer
           type: 'list',
           name: 'continueConfirmation',
           message: '\x1b[33mBefore continuing, please review the information entered and verify it is accurate. Do you want to continue?\x1b[0m',
-          choices: ['Exit', 'Continue'],
+          choices: ['exit', 'continue'],
         },
       ])
       .then((continueAnser) => {
-        if (continueAnser.continueConfirmation === 'Exit') {
+        if (continueAnser.continueConfirmation === 'exit') {
           shouldContinue = false;
         }
       });
@@ -118,7 +125,7 @@ inquirer
       values.suffix = answers.suffix;
       values['regex-pattern'] = answers.regexPattern;
       values['replace-str'] = answers.replaceStr;
-      values['single-level'] = false;
+      values['single-level'] = answers.singleLevel === 'true';
       values['target-space-id'] = '';
 
       duplicate(values);
