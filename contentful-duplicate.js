@@ -38,14 +38,14 @@ inquirer
       type: 'list',
       name: 'environment',
       message: '* Enter the \x1b[32msource environment\x1b[0m (environment the entry / entries are located): ',
-      choices: ['develop', 'staging', 'master'],
+      choices: ['duplication-testing', 'develop', 'staging', 'master'],
       validate: confirmAnswerRequired,
     },
     {
       type: 'list',
       name: 'targetEnvironment',
       message: '* Enter the \x1b[32mtarget environment\x1b[0m (environment you wish to duplicate to): ',
-      choices: ['develop', 'staging', 'master'],
+      choices: ['duplication-testing', 'develop', 'staging', 'master'],
       validate: confirmAnswerRequired,
     },
     {
@@ -74,7 +74,23 @@ inquirer
   ])
   .then(async (answers) => {
     let shouldContinue = true;
-    if (answers.targetEnvironment === 'master') {
+
+    await inquirer
+      .prompt([
+        {
+          type: 'list',
+          name: 'continueConfirmation',
+          message: '\x1b[33mBefore continuing, please review the information entered and verify it is accurate. Do you want to continue?\x1b[0m',
+          choices: ['Exit', 'Continue'],
+        },
+      ])
+      .then((continueAnser) => {
+        if (continueAnser.continueConfirmation === 'Exit') {
+          shouldContinue = false;
+        }
+      });
+
+    if (answers.targetEnvironment === 'master' && shouldContinue) {
       await inquirer
         .prompt([
           {
