@@ -74,7 +74,7 @@ const duplicateEntries = async (
 
     entries.forEach((entryId) => {
       duplicateEntry(entryId, sourceEnv, publish, exclude, singleLevel, targetEnv,
-        prefix, suffix, regex, replaceStr, targetContentTypes).then((entry) => {
+        prefix, suffix, regex, replaceStr, targetContentTypes, null).then((entry) => {
         let entryNameObj;
         for (const fieldName of FIELD_NAME) {
           if (entry.fields[fieldName]) {

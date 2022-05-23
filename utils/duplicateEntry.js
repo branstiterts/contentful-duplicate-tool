@@ -4,7 +4,10 @@ const { FIELD_NAME } = require('../shared/constants');
 const constants = require('../shared/constants');
 const error = require('./error');
 
+let startingEntryId;
 const duplicatedEntries = [];
+const originalToDuplicates = [];
+const loopReferences = [];
 
 const getEntryName = (entry) => {
   for (const key in entry.fields) {
@@ -13,6 +16,59 @@ const getEntryName = (entry) => {
     }
   }
   return null;
+};
+
+const getFieldObj = (object, key, expectedValue) => {
+  let value;
+  Object.keys(object).some((k) => {
+    if (k === key && object[k] === expectedValue) {
+      value = object;
+      return true;
+    }
+    if (object[k] && typeof object[k] === 'object') {
+      value = getFieldObj(object[k], key, expectedValue);
+      return value !== undefined;
+    }
+
+    return null;
+  });
+  return value;
+};
+
+/**
+ * Handles any duplicated content items that are loop references. Finds these entries and updates
+ * the reference to the newly created duplicate item
+ */
+const handleLoopReferences = (targetEnvironment) => {
+  // Correct any loop references to point at the duplicated content instead of the original
+  for (const ref of loopReferences) {
+    if (!ref.completed) {
+      const originalToDuplicateRef = originalToDuplicates
+        .find(oToD => oToD.originalId === ref.parentId);
+      if (originalToDuplicateRef) {
+        targetEnvironment.getEntry(originalToDuplicateRef.duplicateId)
+          // eslint-disable-next-line no-loop-func
+          .then((entryToBeAdjusted) => {
+            if (entryToBeAdjusted) {
+              // Find the originalId in the fields objects in order to update it
+              const objectToBeUpdated = getFieldObj(entryToBeAdjusted.fields, 'id', ref.childId);
+
+              // Get child original id and find duplicate id
+              const childRef = originalToDuplicates.find(oToD => oToD.originalId === ref.childId);
+
+              // Update object with duplicated ID to fix the content reference
+              // objectToBeUpdated.id = originalToDuplicateRef.duplicateId;
+              objectToBeUpdated.id = childRef.duplicateId;
+
+              entryToBeAdjusted.update();
+
+              ref.completed = true;
+            }
+          })
+          .catch(err => error(err.message, true));
+      }
+    }
+  }
 };
 
 /**
@@ -35,6 +91,10 @@ const duplicateEntry = async (
   entryId, environment, publish, exclude, isSingleLevel, targetEnvironment,
   prefix, suffix, regex, replaceStr, targetContentTypes, parentEntryId) => {
   const spinner = ora().start();
+
+  if (!parentEntryId) {
+    startingEntryId = entryId;
+  }
 
   if (!exclude.includes(entryId)) {
     if (!duplicatedEntries.includes(entryId)) {
@@ -79,8 +139,9 @@ const duplicateEntry = async (
                     spinner.info(`Duplicating sub entry #${content.sys.id}`);
 
                     const duplicatedEntry = await duplicateEntry(
-                      content.sys.id, environment, publish, exclude, isSingleLevel, targetEnvironment,
-                      prefix, suffix, regex, replaceStr, targetContentTypes, entryId,
+                      content.sys.id, environment, publish, exclude, isSingleLevel,
+                      targetEnvironment, prefix, suffix, regex, replaceStr,
+                      targetContentTypes, entryId,
                     );
 
                     if (duplicatedEntry !== null) {
@@ -96,7 +157,8 @@ const duplicateEntry = async (
 
                   const duplicatedEntry = await duplicateEntry(
                     fieldContentValue.sys.id, environment, publish, exclude, isSingleLevel,
-                    targetEnvironment, prefix, suffix, regex, replaceStr, targetContentTypes, entryId,
+                    targetEnvironment, prefix, suffix, regex, replaceStr, targetContentTypes,
+                    entryId,
                   );
 
                   if (duplicatedEntry !== null) {
@@ -117,6 +179,7 @@ const duplicateEntry = async (
         fields: newEntryFields,
       }).then((e) => {
         spinner.stop();
+        originalToDuplicates.push({ originalId: entryId, duplicateId: e.sys.id });
         return e;
       }).catch((err) => {
         spinner.stop();
@@ -159,11 +222,19 @@ const duplicateEntry = async (
         }
       }
 
+      if (startingEntryId === entryId) handleLoopReferences(targetEnvironment);
+
       return newEntry;
     // eslint-disable-next-line no-else-return
     } else {
-      const parentEntry = await environment.getEntry(parentEntryId).catch(err => error(err.message, true));
-      const childEntry = await environment.getEntry(entryId).catch(err => error(err.message, true));
+      const parentEntry = await environment
+        .getEntry(parentEntryId)
+        .catch(err => error(err.message, true));
+      const childEntry = await environment
+        .getEntry(entryId)
+        .catch(err => error(err.message, true));
+
+      loopReferences.push({ parentId: parentEntryId, childId: entryId });
 
       const parentName = getEntryName(parentEntry);
       const childName = getEntryName(childEntry);
@@ -171,6 +242,8 @@ const duplicateEntry = async (
       warning(`Content loop found between entry [${parentName} - ID #${parentEntry.sys.id}] and entry [${childName} - ID #${childEntry.sys.id}].`);
     }
   }
+
+  if (startingEntryId === entryId) handleLoopReferences(targetEnvironment);
 
   spinner.stop();
   return null;
