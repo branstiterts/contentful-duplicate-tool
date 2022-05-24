@@ -133,7 +133,9 @@ const duplicateEntry = async (
             if (!isSingleLevel && (Array.isArray(fieldContentValue) || (fieldContentValue instanceof Object && 'sys' in fieldContentValue))) {
               if (Array.isArray(fieldContentValue)) {
                 for (const [, content] of fieldContentValue.entries()) {
-                  if (content.sys.type === constants.LINK_TYPE
+                  if (content
+                    && content.sys
+                    && content.sys.type === constants.LINK_TYPE
                     && content.sys.linkType === constants.ENTRY_TYPE
                     && !exclude.includes(content.sys.id)) {
                     spinner.info(`Duplicating sub entry #${content.sys.id}`);
