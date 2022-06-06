@@ -4,7 +4,9 @@ const { FIELD_NAME } = require('../shared/constants');
 const constants = require('../shared/constants');
 const error = require('./error');
 
+let isParent = false;
 let startingEntryId;
+let startingContentType;
 const duplicatedEntries = [];
 const originalToDuplicates = [];
 const loopReferences = [];
@@ -93,7 +95,10 @@ const duplicateEntry = async (
   const spinner = ora().start();
 
   if (!parentEntryId) {
+    isParent = true;
     startingEntryId = entryId;
+  } else {
+    isParent = false;
   }
 
   if (!exclude.includes(entryId)) {
@@ -101,6 +106,17 @@ const duplicateEntry = async (
       duplicatedEntries.push(entryId);
       // get the entry by id
       const entry = await environment.getEntry(entryId).catch(err => error(err.message, true));
+
+      if (isParent) {
+        startingContentType = entry.sys.contentType.sys.id;
+      }
+
+      if (!isParent
+          && startingContentType
+          && entry.sys.contentType.sys.id === startingContentType) {
+        spinner.stop();
+        return null;
+      }
 
       // clone entry fields value
       const newEntryFields = {

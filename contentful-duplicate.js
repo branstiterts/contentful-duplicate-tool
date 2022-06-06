@@ -34,7 +34,7 @@ inquirer
     },
     {
       name: 'entries',
-      message: '* Enter the \x1b[32mentry / entries ID\x1b[0m you wish to duplicate (use commas to separate multiple IDs): ',
+      message: '* Enter the \x1b[32mentry ID\x1b[0m you wish to duplicate: ',
       validate: confirmAnswerRequired,
     },
     {
@@ -72,11 +72,11 @@ inquirer
     },
     {
       name: 'regexPattern',
-      message: 'Enter a \x1b[32mregex pattern\x1b[0m you wish to replace (leave blank if not desired): ',
+      message: 'Enter a word to \x1b[32mfind\x1b[0m that you wish to replace (leave blank if not desired): ',
     },
     {
       name: 'replaceStr',
-      message: 'Enter a \x1b[32mvalue\x1b[0m you wish to use in place of your regex pattern (leave blank if not desired): ',
+      message: 'Enter the value you wish to \x1b[32mreplace\x1b[0m with from the step above (leave blank if not desired): ',
     },
   ])
   .then(async (answers) => {
